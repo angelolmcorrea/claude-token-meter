@@ -63,3 +63,35 @@ def test_parse_reset_text_hour_only_pm():
 def test_parse_reset_text_unparseable():
     now = ur.parse_ts("2026-06-20T22:00:00Z")
     assert ur.parse_reset_text("limit reached, try later", "UTC", now) is None
+
+
+from datetime import timedelta
+
+def _turn(iso, w=1.0):
+    return ur.TurnEvent(ur.parse_ts(iso), w)
+
+
+def test_find_active_block_simple():
+    turns = [_turn("2026-06-21T00:00:00Z"), _turn("2026-06-21T01:00:00Z")]
+    now = ur.parse_ts("2026-06-21T02:00:00Z")
+    start = ur.find_active_block(turns, timedelta(hours=5), now)
+    assert start == ur.parse_ts("2026-06-21T00:00:00Z")
+
+
+def test_find_active_block_picks_latest_after_gap():
+    turns = [_turn("2026-06-21T00:00:00Z"),   # old block
+             _turn("2026-06-21T07:00:00Z")]   # > 5h later -> new block
+    now = ur.parse_ts("2026-06-21T08:00:00Z")
+    start = ur.find_active_block(turns, timedelta(hours=5), now)
+    assert start == ur.parse_ts("2026-06-21T07:00:00Z")
+
+
+def test_find_active_block_idle_returns_none():
+    turns = [_turn("2026-06-21T00:00:00Z")]
+    now = ur.parse_ts("2026-06-21T06:00:00Z")  # > 5h after start
+    assert ur.find_active_block(turns, timedelta(hours=5), now) is None
+
+
+def test_find_active_block_empty():
+    now = ur.parse_ts("2026-06-21T06:00:00Z")
+    assert ur.find_active_block([], timedelta(hours=5), now) is None

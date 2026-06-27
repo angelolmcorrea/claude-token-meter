@@ -106,3 +106,17 @@ def parse_reset_text(text: str, tz_name: str, now: datetime) -> datetime | None:
     if candidate <= now_local:
         candidate = candidate.replace(day=now_local.day) + _ONE_DAY
     return candidate.astimezone(timezone.utc)
+
+
+def find_active_block(turns, window, now):
+    """Return the start ts of the active 5h block, or None if idle/empty."""
+    if not turns:
+        return None
+    ordered = sorted(turns, key=lambda t: t.ts)
+    block_start = ordered[0].ts
+    for t in ordered:
+        if t.ts > block_start + window:
+            block_start = t.ts
+    if now > block_start + window:
+        return None
+    return block_start
