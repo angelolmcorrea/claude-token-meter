@@ -86,8 +86,6 @@ def iter_events(lines, weights, tz_name, now):
 
 _RESET_RE = re.compile(r"resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)", re.IGNORECASE)
 
-_ONE_DAY = timedelta(days=1)
-
 
 def parse_reset_text(text: str, tz_name: str, now: datetime) -> datetime | None:
     m = _RESET_RE.search(text or "")
@@ -104,7 +102,11 @@ def parse_reset_text(text: str, tz_name: str, now: datetime) -> datetime | None:
     now_local = now.astimezone(tz)
     candidate = now_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if candidate <= now_local:
-        candidate = candidate.replace(day=now_local.day) + _ONE_DAY
+        next_date = now_local.date() + timedelta(days=1)
+        candidate = now_local.replace(
+            year=next_date.year, month=next_date.month, day=next_date.day,
+            hour=hour, minute=minute, second=0, microsecond=0,
+        )
     return candidate.astimezone(timezone.utc)
 
 
@@ -151,6 +153,7 @@ def calibrate_cap(turns, resets, window):
 def resolve_reset(block_start, resets, window, now):
     future = [r.reset_at for r in resets if r.reset_at and r.reset_at > now]
     if future:
+        # earliest future reset wins: that's when the current limit lifts
         return min(future), "logged"
     if block_start is not None:
         return block_start + window, "computed"
@@ -195,8 +198,14 @@ def read_snapshot(claude_dir, config, now) -> UsageSnapshot:
     reset_at, source = resolve_reset(block_start, resets, window, now)
 
     observed = calibrate_cap(turns, resets, window)
-    cap = config.get("calibrated_cap") or observed or config["default_cap_estimate"]
-    is_estimate = not (config.get("calibrated_cap") or observed)
+    persisted = config.get("calibrated_cap")
+    if persisted is not None:
+        cap = persisted
+    elif observed is not None:
+        cap = observed
+    else:
+        cap = config["default_cap_estimate"]
+    is_estimate = persisted is None and observed is None
 
     if block_start is not None:
         window_start = block_start

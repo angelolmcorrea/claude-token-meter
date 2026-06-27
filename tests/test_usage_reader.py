@@ -182,3 +182,40 @@ def test_read_snapshot_estimate_flag(tmp_path):
     assert snap.is_estimate is True
     assert snap.cap == 1000
     assert snap.pct == 0.05
+
+
+def test_resolve_reset_picks_earliest_future():
+    now = ur.parse_ts("2026-06-21T02:00:00Z")
+    block_start = ur.parse_ts("2026-06-21T00:00:00Z")
+    early = ur.parse_ts("2026-06-21T04:30:00Z")
+    late = ur.parse_ts("2026-06-21T06:00:00Z")
+    resets = [ur.ResetEvent(now, late), ur.ResetEvent(now, early)]
+    reset_at, source = ur.resolve_reset(block_start, resets, timedelta(hours=5), now)
+    assert reset_at == early
+    assert source == "logged"
+
+
+def test_resolve_reset_logged_without_active_block():
+    now = ur.parse_ts("2026-06-21T02:00:00Z")
+    future = ur.parse_ts("2026-06-21T05:00:00Z")
+    reset_at, source = ur.resolve_reset(None, [ur.ResetEvent(now, future)],
+                                        timedelta(hours=5), now)
+    assert reset_at == future
+    assert source == "logged"
+
+
+def test_read_snapshot_post_limit_window(tmp_path):
+    proj = tmp_path / "projects" / "p1"
+    proj.mkdir(parents=True)
+    _write_jsonl(proj / "s.jsonl", [
+        {"timestamp": "2026-06-21T01:30:00Z", "error": "rate_limit",
+         "apiErrorStatus": 429, "message": {"content": [{"type": "text",
+          "text": "You've hit your session limit · resets 5am (UTC)"}]}}])
+    config = {"weights": WEIGHTS, "calibrated_cap": None, "default_cap_estimate": 500000,
+              "window_hours": 5, "lookback_hours": 6, "timezone": "UTC"}
+    now = ur.parse_ts("2026-06-21T02:00:00Z")
+    snap = ur.read_snapshot(tmp_path, config, now)
+    assert snap.reset_source == "logged"
+    assert snap.reset_at == ur.parse_ts("2026-06-21T05:00:00Z")
+    assert snap.window_start == ur.parse_ts("2026-06-21T00:00:00Z")
+    assert snap.tokens_used == 0.0
