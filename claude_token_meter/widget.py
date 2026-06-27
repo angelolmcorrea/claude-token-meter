@@ -13,11 +13,17 @@ TRACK = QColor(255, 255, 255, 28)
 TEXT = QColor("#E6EDF3")
 MUTED = QColor("#8B949E")
 
-_STATUS_WORD = {"auth": "expirado", "offline": "offline", "error": "erro"}
+_STATUS_WORD = {
+    "auth": "expirado",
+    "offline": "offline",
+    "error": "erro",
+    "ratelimited": "aguardando",
+}
 _STATUS_TIP = {
     "auth": "Token expirado — rode o Claude Code pra renovar",
     "offline": "Sem conexao com a API de uso",
     "error": "Erro ao consultar o uso",
+    "ratelimited": "A API limitou as consultas — tentando de novo em breve",
 }
 
 

@@ -73,6 +73,16 @@ def test_get_snapshot_401_is_auth(monkeypatch):
     assert uc.get_snapshot().status == "auth"
 
 
+def test_get_snapshot_429_is_ratelimited(monkeypatch):
+    monkeypatch.setattr(uc, "read_token", lambda p=None: "tok")
+
+    def boom(token, timeout=15.0):
+        raise urllib.error.HTTPError(uc.ENDPOINT, 429, "Too Many Requests", {}, None)
+
+    monkeypatch.setattr(uc, "fetch_usage", boom)
+    assert uc.get_snapshot().status == "ratelimited"
+
+
 def test_get_snapshot_offline(monkeypatch):
     monkeypatch.setattr(uc, "read_token", lambda p=None: "tok")
 

@@ -5,7 +5,7 @@ from claude_token_meter import config as cfg
 def test_load_creates_defaults(tmp_path):
     path = tmp_path / "config.json"
     c = cfg.load(path)
-    assert c["refresh_seconds"] == 30
+    assert c["refresh_seconds"] == 60
     assert c["thresholds"]["amber"] == 0.60
     assert c["credentials_path"] is None
     assert c["autostart"] is True

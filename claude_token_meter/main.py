@@ -35,14 +35,23 @@ def main():
         autostart.enable()
 
     creds = _credentials_path(config)
+    state = {"last_ok": None}
 
     def tick():
         snap = uc.get_snapshot(creds)
+        if snap.status == "ok":
+            state["last_ok"] = snap
+            display = snap
+        elif snap.status in ("offline", "ratelimited") and state["last_ok"] is not None:
+            # transient: keep showing the last good value instead of blanking out
+            display = state["last_ok"]
+        else:
+            display = snap  # expired/error, or nothing good yet -> show the state
         # persist any drag move
         if (config["window"]["x"], config["window"]["y"]) != (widget.x(), widget.y()):
             config["window"]["x"], config["window"]["y"] = widget.x(), widget.y()
             cfg.save(config)
-        widget.update_snapshot(snap)
+        widget.update_snapshot(display)
 
     tick()
     timer = QTimer()

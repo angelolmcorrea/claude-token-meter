@@ -88,7 +88,11 @@ def get_snapshot(credentials_path: Path | None = None, timeout: float = 15.0) ->
     try:
         data = fetch_usage(token, timeout)
     except urllib.error.HTTPError as e:
-        return _empty("auth" if e.code in (401, 403) else "error")
+        if e.code in (401, 403):
+            return _empty("auth")
+        if e.code == 429:
+            return _empty("ratelimited")
+        return _empty("error")
     except (urllib.error.URLError, TimeoutError, OSError):
         return _empty("offline")
     except (json.JSONDecodeError, ValueError):
