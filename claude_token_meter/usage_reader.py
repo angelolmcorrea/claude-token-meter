@@ -84,8 +84,25 @@ def iter_events(lines, weights, tz_name, now):
     return turns, resets
 
 
-def parse_reset_text(text, tz_name, now):  # replaced in Task 4
-    return None
-
+_RESET_RE = re.compile(r"resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)", re.IGNORECASE)
 
 _ONE_DAY = timedelta(days=1)
+
+
+def parse_reset_text(text: str, tz_name: str, now: datetime) -> datetime | None:
+    m = _RESET_RE.search(text or "")
+    if not m:
+        return None
+    hour = int(m.group(1)) % 12
+    minute = int(m.group(2) or 0)
+    if m.group(3).lower() == "pm":
+        hour += 12
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = timezone.utc
+    now_local = now.astimezone(tz)
+    candidate = now_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if candidate <= now_local:
+        candidate = candidate.replace(day=now_local.day) + _ONE_DAY
+    return candidate.astimezone(timezone.utc)
