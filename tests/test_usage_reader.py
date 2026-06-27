@@ -35,12 +35,21 @@ def test_iter_events_splits_turns_and_resets():
         'not json at all',
         '{"type":"user","timestamp":"2026-06-21T00:30:00Z"}',
     ]
-    turns, resets = ur.iter_events(lines, WEIGHTS, "America/Sao_Paulo",
-                                   ur.parse_ts("2026-06-21T02:00:00Z"))
+    turns, resets = ur.iter_events(lines, WEIGHTS, "America/Sao_Paulo")
     assert len(turns) == 1
     assert turns[0].weighted == 10.0
     assert len(resets) == 1
     assert resets[0].reset_at is not None
+
+
+def test_iter_events_reset_anchors_to_event_ts():
+    # 429 fired at 04:00 UTC saying "resets 5am" -> 05:00 the SAME day,
+    # not rolled forward relative to a much-later 'now'.
+    lines = ['{"timestamp":"2026-06-21T04:00:00Z","error":"rate_limit",'
+             '"apiErrorStatus":429,"message":{"content":[{"type":"text",'
+             '"text":"resets 5am (UTC)"}]}}']
+    turns, resets = ur.iter_events(lines, WEIGHTS, "UTC")
+    assert resets[0].reset_at == ur.parse_ts("2026-06-21T05:00:00Z")
 
 
 def test_parse_reset_text_with_minutes():
@@ -219,3 +228,26 @@ def test_read_snapshot_post_limit_window(tmp_path):
     assert snap.reset_at == ur.parse_ts("2026-06-21T05:00:00Z")
     assert snap.window_start == ur.parse_ts("2026-06-21T00:00:00Z")
     assert snap.tokens_used == 0.0
+
+
+def test_read_snapshot_ignores_stale_logged_reset(tmp_path):
+    proj = tmp_path / "projects" / "p1"
+    proj.mkdir(parents=True)
+    _write_jsonl(proj / "s.jsonl", [
+        # stale 429 from an earlier window (its 5am reset already passed by `now`)
+        {"timestamp": "2026-06-21T04:00:00Z", "error": "rate_limit",
+         "apiErrorStatus": 429, "message": {"content": [{"type": "text",
+          "text": "resets 5am (UTC)"}]}},
+        # a fresh window of activity well after that reset
+        {"type": "assistant", "timestamp": "2026-06-21T09:00:00Z",
+         "message": {"usage": {"output_tokens": 30}}},
+        {"type": "assistant", "timestamp": "2026-06-21T10:00:00Z",
+         "message": {"usage": {"output_tokens": 30}}},
+    ])
+    config = {"weights": WEIGHTS, "calibrated_cap": 1000.0, "default_cap_estimate": 500000,
+              "window_hours": 5, "lookback_hours": 6, "timezone": "UTC"}
+    now = ur.parse_ts("2026-06-21T11:00:00Z")
+    snap = ur.read_snapshot(tmp_path, config, now)
+    assert snap.reset_source == "computed"
+    assert snap.reset_at == ur.parse_ts("2026-06-21T14:00:00Z")
+    assert snap.window_start == ur.parse_ts("2026-06-21T09:00:00Z")

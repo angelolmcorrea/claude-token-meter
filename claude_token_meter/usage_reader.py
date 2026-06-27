@@ -60,7 +60,7 @@ def _content_text(message: dict) -> str:
     return ""
 
 
-def iter_events(lines, weights, tz_name, now):
+def iter_events(lines, weights, tz_name):
     """Parse JSONL lines into (turns, resets). Skips malformed lines."""
     turns, resets = [], []
     for line in lines:
@@ -76,7 +76,10 @@ def iter_events(lines, weights, tz_name, now):
             continue
         if obj.get("error") == "rate_limit" or obj.get("apiErrorStatus") == 429:
             text = _content_text(obj.get("message", {}) or {})
-            resets.append(ResetEvent(ts, parse_reset_text(text, tz_name, now)))
+            # anchor the reset to the EVENT's own time, not the current clock:
+            # a reset announced earlier resolves relative to when it fired, so a
+            # stale window's reset lands in the past and gets dropped downstream.
+            resets.append(ResetEvent(ts, parse_reset_text(text, tz_name, ts)))
             continue
         message = obj.get("message")
         if isinstance(message, dict) and isinstance(message.get("usage"), dict):
@@ -87,7 +90,8 @@ def iter_events(lines, weights, tz_name, now):
 _RESET_RE = re.compile(r"resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)", re.IGNORECASE)
 
 
-def parse_reset_text(text: str, tz_name: str, now: datetime) -> datetime | None:
+def parse_reset_text(text: str, tz_name: str, anchor: datetime) -> datetime | None:
+    """Resolve "resets Xam/pm" to the first such local time at or after `anchor`."""
     m = _RESET_RE.search(text or "")
     if not m:
         return None
@@ -99,11 +103,11 @@ def parse_reset_text(text: str, tz_name: str, now: datetime) -> datetime | None:
         tz = ZoneInfo(tz_name)
     except Exception:
         tz = timezone.utc
-    now_local = now.astimezone(tz)
-    candidate = now_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    if candidate <= now_local:
-        next_date = now_local.date() + timedelta(days=1)
-        candidate = now_local.replace(
+    anchor_local = anchor.astimezone(tz)
+    candidate = anchor_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if candidate <= anchor_local:
+        next_date = anchor_local.date() + timedelta(days=1)
+        candidate = anchor_local.replace(
             year=next_date.year, month=next_date.month, day=next_date.day,
             hour=hour, minute=minute, second=0, microsecond=0,
         )
@@ -192,7 +196,7 @@ def read_snapshot(claude_dir, config, now) -> UsageSnapshot:
     tz_name = config.get("timezone", "UTC")
 
     files = _recent_jsonl_files(claude_dir, lookback)
-    turns, resets = iter_events(_read_lines(files), weights, tz_name, now)
+    turns, resets = iter_events(_read_lines(files), weights, tz_name)
 
     block_start = find_active_block(turns, window, now)
     reset_at, source = resolve_reset(block_start, resets, window, now)
