@@ -155,3 +155,62 @@ def resolve_reset(block_start, resets, window, now):
     if block_start is not None:
         return block_start + window, "computed"
     return None, "idle"
+
+
+def _recent_jsonl_files(claude_dir, lookback):
+    root = Path(claude_dir) / "projects"
+    if not root.exists():
+        return []
+    cutoff = time.time() - lookback.total_seconds()
+    files = []
+    for f in root.rglob("*.jsonl"):
+        try:
+            if f.stat().st_mtime >= cutoff:
+                files.append(f)
+        except OSError:
+            continue
+    return files
+
+
+def _read_lines(files):
+    for f in files:
+        try:
+            with f.open("r", encoding="utf-8", errors="ignore") as fh:
+                for line in fh:
+                    yield line
+        except OSError:
+            continue
+
+
+def read_snapshot(claude_dir, config, now) -> UsageSnapshot:
+    window = timedelta(hours=config["window_hours"])
+    lookback = timedelta(hours=config["lookback_hours"])
+    weights = config["weights"]
+    tz_name = config.get("timezone", "UTC")
+
+    files = _recent_jsonl_files(claude_dir, lookback)
+    turns, resets = iter_events(_read_lines(files), weights, tz_name, now)
+
+    block_start = find_active_block(turns, window, now)
+    reset_at, source = resolve_reset(block_start, resets, window, now)
+
+    observed = calibrate_cap(turns, resets, window)
+    cap = config.get("calibrated_cap") or observed or config["default_cap_estimate"]
+    is_estimate = not (config.get("calibrated_cap") or observed)
+
+    if block_start is not None:
+        window_start = block_start
+    elif source == "logged" and reset_at is not None:
+        window_start = reset_at - window
+    else:
+        window_start = None
+
+    if window_start is None:
+        return UsageSnapshot(None, reset_at if source == "logged" else None,
+                             0.0, cap, 0.0, is_estimate,
+                             "idle" if source != "logged" else source, observed)
+
+    tokens_used = sum(t.weighted for t in turns if window_start <= t.ts <= now)
+    pct = max(0.0, min(1.0, tokens_used / cap)) if cap > 0 else 0.0
+    return UsageSnapshot(window_start, reset_at, tokens_used, cap, pct,
+                         is_estimate, source, observed)

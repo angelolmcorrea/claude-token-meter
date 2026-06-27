@@ -127,3 +127,58 @@ def test_resolve_reset_falls_back_to_computed():
     reset_at, source = ur.resolve_reset(block_start, [], timedelta(hours=5), now)
     assert reset_at == ur.parse_ts("2026-06-21T05:00:00Z")
     assert source == "computed"
+
+
+import json as _json
+
+def _write_jsonl(path, rows):
+    path.write_text("\n".join(_json.dumps(r) for r in rows), encoding="utf-8")
+
+
+def test_read_snapshot_active_window(tmp_path):
+    proj = tmp_path / "projects" / "p1"
+    proj.mkdir(parents=True)
+    rows = [
+        {"type": "assistant", "timestamp": "2026-06-21T00:00:00Z",
+         "message": {"usage": {"output_tokens": 40}}},
+        {"type": "assistant", "timestamp": "2026-06-21T01:00:00Z",
+         "message": {"usage": {"output_tokens": 60}}},
+    ]
+    _write_jsonl(proj / "s.jsonl", rows)
+    config = {
+        "weights": WEIGHTS, "calibrated_cap": 200.0, "default_cap_estimate": 500000,
+        "window_hours": 5, "lookback_hours": 6, "timezone": "UTC",
+    }
+    now = ur.parse_ts("2026-06-21T02:00:00Z")
+    snap = ur.read_snapshot(tmp_path, config, now)
+    assert snap.tokens_used == 100.0
+    assert snap.cap == 200.0
+    assert snap.pct == 0.5
+    assert snap.is_estimate is False
+    assert snap.reset_source == "computed"
+    assert snap.reset_at == ur.parse_ts("2026-06-21T05:00:00Z")
+
+
+def test_read_snapshot_idle(tmp_path):
+    (tmp_path / "projects").mkdir()
+    config = {"weights": WEIGHTS, "calibrated_cap": None, "default_cap_estimate": 500000,
+              "window_hours": 5, "lookback_hours": 6, "timezone": "UTC"}
+    now = ur.parse_ts("2026-06-21T02:00:00Z")
+    snap = ur.read_snapshot(tmp_path, config, now)
+    assert snap.reset_source == "idle"
+    assert snap.pct == 0.0
+
+
+def test_read_snapshot_estimate_flag(tmp_path):
+    proj = tmp_path / "projects" / "p1"
+    proj.mkdir(parents=True)
+    _write_jsonl(proj / "s.jsonl", [
+        {"type": "assistant", "timestamp": "2026-06-21T01:30:00Z",
+         "message": {"usage": {"output_tokens": 50}}}])
+    config = {"weights": WEIGHTS, "calibrated_cap": None, "default_cap_estimate": 1000,
+              "window_hours": 5, "lookback_hours": 6, "timezone": "UTC"}
+    now = ur.parse_ts("2026-06-21T02:00:00Z")
+    snap = ur.read_snapshot(tmp_path, config, now)
+    assert snap.is_estimate is True
+    assert snap.cap == 1000
+    assert snap.pct == 0.05
