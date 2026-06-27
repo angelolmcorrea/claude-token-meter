@@ -167,3 +167,24 @@ Setup: `python -m venv .venv` → `pip install -r requirements.txt` → `iniciar
 ## 13. Vault
 
 Produto do cliente interno `PROJETOS_PARTICULARES`. O ponteiro no vault (README sob `02_CLIENTES/PROJETOS_PARTICULARES/PRODUTOS/`) fica pra depois, com aval do Angelo — não criar estrutura no vault agora.
+
+---
+
+## 14. Adendo 2026-06-27 — troca da fonte de dados (supersede seções 3–11)
+
+**As seções 1–13 acima descrevem a abordagem original** (reconstruir o % somando os tokens dos JSONL locais). Na validação real essa abordagem se mostrou **imprecisa**: o `cache_read` (re-leitura de contexto em cache a cada turno) é ~75% da soma ponderada e não é o que o limite de sessão do Claude mede — a barra marcava 54% quando o app dizia 25%. Reconstruir o % a partir de tokens locais é estruturalmente inviável.
+
+**Descoberta:** o número real está num endpoint (o mesmo que o `/usage` do CLI usa), e consultá-lo **não gasta token** (é query de uso, não chamada de modelo):
+
+- `GET https://api.anthropic.com/api/oauth/usage`
+- Headers: `Authorization: Bearer <claudeAiOauth.accessToken de ~/.claude/.credentials.json>`, `anthropic-beta: oauth-2025-04-20`, `anthropic-version: 2023-06-01`.
+- Resposta (200): `five_hour.utilization` (0–100) + `five_hour.resets_at` (sessão de 5h); `seven_day.*` (semanal); também headers `anthropic-ratelimit-unified-*`.
+
+**Nova arquitetura (substitui `usage_reader.py`):**
+
+- `usage_client.py` — `read_token()` lê o credentials; `fetch_usage(token)` faz o GET (urllib, sem dependência nova); `parse_usage(data)` → `UsageSnapshot{pct, reset_at, weekly_pct, weekly_reset_at, status}`; `get_snapshot()` orquestra e mapeia erro pra status `auth`/`offline`/`error`. Não renova token (o CLI mantém fresco).
+- `config.py` enxuto: `refresh_seconds` (30), `thresholds`, `timezone`, `credentials_path`, `window`, `autostart`. Sem pesos/teto/janela.
+- `widget.py` — sem `~`/estimativa; mostra `expirado`/`offline`/`erro` quando `status != ok`; tooltip com o semanal; menu sem "recalibrar".
+- `main.py` — chama `usage_client.get_snapshot()` a cada `refresh_seconds`.
+
+**Trade-off aceito (decisão do Angelo):** deixa de ser "100% offline / lê só arquivos locais" — agora faz uma chamada de rede e lê o token OAuth local. Mas **mantém a promessa real (zero token)** e fica **preciso** (bate com o app). Privacidade: o token vai só pra `api.anthropic.com`, mesmo destino do CLI.
