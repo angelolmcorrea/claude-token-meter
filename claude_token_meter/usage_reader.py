@@ -120,3 +120,38 @@ def find_active_block(turns, window, now):
     if now > block_start + window:
         return None
     return block_start
+
+
+def _block_start_for(ordered_turns, until_ts, window):
+    bs = None
+    for t in ordered_turns:
+        if t.ts > until_ts:
+            break
+        if bs is None or t.ts > bs + window:
+            bs = t.ts
+    return bs
+
+
+def calibrate_cap(turns, resets, window):
+    """Most-recent observed cap: weighted sum of the block up to each 429."""
+    if not resets:
+        return None
+    ordered = sorted(turns, key=lambda t: t.ts)
+    best = None  # (reset_ts, cap)
+    for r in sorted(resets, key=lambda x: x.ts):
+        bs = _block_start_for(ordered, r.ts, window)
+        if bs is None:
+            continue
+        cap = sum(t.weighted for t in ordered if bs <= t.ts <= r.ts)
+        if cap > 0 and (best is None or r.ts > best[0]):
+            best = (r.ts, cap)
+    return best[1] if best else None
+
+
+def resolve_reset(block_start, resets, window, now):
+    future = [r.reset_at for r in resets if r.reset_at and r.reset_at > now]
+    if future:
+        return min(future), "logged"
+    if block_start is not None:
+        return block_start + window, "computed"
+    return None, "idle"

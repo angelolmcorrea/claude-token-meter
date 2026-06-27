@@ -95,3 +95,35 @@ def test_find_active_block_idle_returns_none():
 def test_find_active_block_empty():
     now = ur.parse_ts("2026-06-21T06:00:00Z")
     assert ur.find_active_block([], timedelta(hours=5), now) is None
+
+
+def test_calibrate_cap_sums_block_up_to_reset():
+    turns = [_turn("2026-06-21T00:00:00Z", 30.0),
+             _turn("2026-06-21T00:30:00Z", 70.0),
+             _turn("2026-06-21T06:00:00Z", 999.0)]  # next block, ignored
+    resets = [ur.ResetEvent(ur.parse_ts("2026-06-21T01:00:00Z"), None)]
+    cap = ur.calibrate_cap(turns, resets, timedelta(hours=5))
+    assert cap == 100.0
+
+
+def test_calibrate_cap_none_when_no_resets():
+    turns = [_turn("2026-06-21T00:00:00Z", 30.0)]
+    assert ur.calibrate_cap(turns, [], timedelta(hours=5)) is None
+
+
+def test_resolve_reset_prefers_future_logged():
+    now = ur.parse_ts("2026-06-21T02:00:00Z")
+    block_start = ur.parse_ts("2026-06-21T00:00:00Z")
+    logged = ur.parse_ts("2026-06-21T05:30:00Z")
+    resets = [ur.ResetEvent(now, logged)]
+    reset_at, source = ur.resolve_reset(block_start, resets, timedelta(hours=5), now)
+    assert reset_at == logged
+    assert source == "logged"
+
+
+def test_resolve_reset_falls_back_to_computed():
+    now = ur.parse_ts("2026-06-21T02:00:00Z")
+    block_start = ur.parse_ts("2026-06-21T00:00:00Z")
+    reset_at, source = ur.resolve_reset(block_start, [], timedelta(hours=5), now)
+    assert reset_at == ur.parse_ts("2026-06-21T05:00:00Z")
+    assert source == "computed"
