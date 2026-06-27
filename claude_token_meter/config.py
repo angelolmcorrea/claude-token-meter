@@ -4,14 +4,10 @@ from copy import deepcopy
 from pathlib import Path
 
 DEFAULTS = {
-    "weights": {"input": 1.0, "output": 1.0, "cache_creation": 1.0, "cache_read": 0.1},
-    "calibrated_cap": None,
-    "default_cap_estimate": 500000,
-    "window_hours": 5,
-    "lookback_hours": 6,
-    "refresh_seconds": 10,
+    "refresh_seconds": 30,
     "thresholds": {"amber": 0.60, "red": 0.85},
     "timezone": "America/Sao_Paulo",
+    "credentials_path": None,  # None -> ~/.claude/.credentials.json
     "window": {"x": None, "y": None, "opacity": 0.92},
     "autostart": True,
 }

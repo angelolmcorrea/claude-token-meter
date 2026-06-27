@@ -11,14 +11,21 @@ RED = QColor("#F85149")
 BG = QColor(20, 22, 26, 235)
 TRACK = QColor(255, 255, 255, 28)
 TEXT = QColor("#E6EDF3")
+MUTED = QColor("#8B949E")
+
+_STATUS_WORD = {"auth": "expirado", "offline": "offline", "error": "erro"}
+_STATUS_TIP = {
+    "auth": "Token expirado — rode o Claude Code pra renovar",
+    "offline": "Sem conexao com a API de uso",
+    "error": "Erro ao consultar o uso",
+}
 
 
 class MeterWidget(QWidget):
-    def __init__(self, config, on_quit, on_recalibrate, on_toggle_autostart):
+    def __init__(self, config, on_quit, on_toggle_autostart):
         super().__init__()
         self._config = config
         self._on_quit = on_quit
-        self._on_recalibrate = on_recalibrate
         self._on_toggle_autostart = on_toggle_autostart
         self._snapshot = None
         self._drag_offset = None
@@ -36,6 +43,17 @@ class MeterWidget(QWidget):
 
     def update_snapshot(self, snapshot):
         self._snapshot = snapshot
+        if snapshot is None:
+            self.setToolTip("")
+        elif snapshot.status != "ok":
+            self.setToolTip(_STATUS_TIP.get(snapshot.status, ""))
+        elif snapshot.weekly_pct is not None:
+            self.setToolTip(
+                f"Sessao: {int(snapshot.pct * 100)}%  ·  "
+                f"Semanal: {int(snapshot.weekly_pct * 100)}%"
+            )
+        else:
+            self.setToolTip(f"Sessao: {int(snapshot.pct * 100)}%")
         self.update()  # trigger repaint
 
     def _color(self, pct):
@@ -47,8 +65,12 @@ class MeterWidget(QWidget):
         return GREEN
 
     def _reset_label(self, snap, now):
-        if snap is None or snap.reset_source == "idle" or snap.reset_at is None:
-            return "ocioso"
+        if snap is None:
+            return "--"
+        if snap.status != "ok":
+            return _STATUS_WORD.get(snap.status, "--")
+        if snap.reset_at is None:
+            return ""
         delta = snap.reset_at - now
         mins = max(0, int(delta.total_seconds() // 60))
         if mins >= 60:
@@ -65,7 +87,8 @@ class MeterWidget(QWidget):
 
         snap = self._snapshot
         now = datetime.now(timezone.utc)
-        pct = snap.pct if snap else 0.0
+        ok = bool(snap and snap.status == "ok")
+        pct = snap.pct if ok else 0.0
 
         bar = QRectF(8, HEIGHT - 11, WIDTH - 16, 5)
         p.setBrush(QBrush(TRACK))
@@ -75,9 +98,12 @@ class MeterWidget(QWidget):
             p.setBrush(QBrush(self._color(pct)))
             p.drawRoundedRect(fill, 2.5, 2.5)
 
-        prefix = "~" if (snap and snap.is_estimate) else ""
-        label = f"{prefix}{int(pct * 100)}%   {self._reset_label(snap, now)}"
-        p.setPen(TEXT)
+        if ok:
+            label = f"{int(pct * 100)}%   {self._reset_label(snap, now)}"
+            p.setPen(TEXT)
+        else:
+            label = self._reset_label(snap, now)
+            p.setPen(MUTED)
         p.setFont(QFont("Segoe UI", 9, QFont.DemiBold))
         p.drawText(QRectF(10, 3, WIDTH - 20, 16), Qt.AlignLeft | Qt.AlignVCenter, label)
 
@@ -100,7 +126,6 @@ class MeterWidget(QWidget):
 
     def _menu(self, global_pos):
         m = QMenu()
-        m.addAction("Recalibrar teto", self._on_recalibrate)
         m.addAction("Iniciar com o Windows", self._on_toggle_autostart)
         m.addSeparator()
         m.addAction("Sair", self._on_quit)

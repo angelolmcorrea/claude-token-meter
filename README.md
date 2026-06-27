@@ -3,9 +3,15 @@
 Janelinha always-on-top (Windows) que mostra, numa barra de uma linha, o
 consumo da janela de sessao atual do Claude Code (% + tempo pra resetar).
 
-100% offline e passivo: le apenas os transcripts locais em
-`~/.claude/projects/**/*.jsonl`. Nao chama a API nem nenhum modelo — custo
-em tokens: zero.
+**Le o numero REAL** — a mesma fonte que o comando `/usage` do Claude Code
+usa: o endpoint `GET /api/oauth/usage` da Anthropic, autenticado com o token
+OAuth que ja esta no seu `~/.claude/.credentials.json`. O `%` bate exato com
+o que o app mostra.
+
+**Custo em tokens: zero.** E uma consulta de uso, nao uma chamada de modelo.
+Precisa de rede e do seu login do Claude Code; nunca renova o token sozinho
+(o proprio CLI mantem ele fresco no arquivo) — se expirar, a barra mostra
+"expirado" ate voce rodar o Claude Code de novo.
 
 ## Rodar
 
@@ -15,16 +21,22 @@ py -3 -m venv .venv
 iniciar.bat
 ```
 
-Arrasta com o mouse pra reposicionar. Clique-direito: recalibrar teto,
-iniciar com o Windows, sair.
+Arrasta com o mouse pra reposicionar. Clique-direito: iniciar com o Windows,
+sair. Passa o mouse por cima pra ver o uso semanal no tooltip.
 
-## Como a % e calculada
+## O que a barra mostra
 
-A barra mostra os tokens ponderados usados na janela de 5h sobre um teto.
-O teto (100%) **se auto-calibra**: quando o Claude Code loga um limite de
-sessao batido (429), o total acumulado naquele instante vira o teto. Antes
-da primeira batida, a barra mostra `~NN%` (estimativa). E uma aproximacao
-calibrada, nao uma medicao exata — boa pra "estou perto de estourar?".
+- `NN%` + `reset 4h28` — utilizacao da janela de sessao de 5h e quanto falta
+  pra resetar (campo `five_hour` do endpoint).
+- Cores: verde / ambar (>=60%) / vermelho (>=85%) — thresholds configuraveis.
+- Estados sem dado: `expirado` (token venceu), `offline` (sem rede), `erro`.
+- Tooltip: sessao + uso semanal (`seven_day`).
 
-Config em `%APPDATA%\claude-token-meter\config.json` (pesos, thresholds de
-cor, intervalo, timezone, posicao).
+Config em `%APPDATA%\claude-token-meter\config.json` (intervalo de refresh,
+thresholds de cor, timezone, posicao, caminho do credentials).
+
+## Privacidade
+
+O medidor le o token OAuth de `~/.claude/.credentials.json` e o envia apenas
+para `api.anthropic.com` (o mesmo destino do proprio Claude Code), via HTTPS,
+so no header Authorization. Nada e gravado nem enviado pra outro lugar.
