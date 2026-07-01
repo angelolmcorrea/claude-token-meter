@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication
 from claude_token_meter import config as cfg
 from claude_token_meter import usage_client as uc
 from claude_token_meter import autostart
+from claude_token_meter import status as st
 from claude_token_meter.widget import MeterWidget
 
 
@@ -57,6 +58,16 @@ def main():
     timer = QTimer()
     timer.timeout.connect(tick)
     timer.start(config["refresh_seconds"] * 1000)
+
+    # poll rapido e barato (le so um arquivo local) pra bolinha reagir ~na hora,
+    # desacoplado do poll da API de uso (que fica em refresh_seconds)
+    def status_tick():
+        widget.update_status(st.read_status())
+
+    status_tick()
+    status_timer = QTimer()
+    status_timer.timeout.connect(status_tick)
+    status_timer.start(config.get("status_poll_seconds", 1) * 1000)
 
     sys.exit(app.exec())
 

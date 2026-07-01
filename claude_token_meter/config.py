@@ -5,6 +5,7 @@ from pathlib import Path
 
 DEFAULTS = {
     "refresh_seconds": 60,
+    "status_poll_seconds": 1,
     "thresholds": {"amber": 0.60, "red": 0.85},
     "timezone": "America/Sao_Paulo",
     "credentials_path": None,  # None -> ~/.claude/.credentials.json

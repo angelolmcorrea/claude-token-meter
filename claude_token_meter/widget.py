@@ -13,6 +13,14 @@ TRACK = QColor(255, 255, 255, 28)
 TEXT = QColor("#E6EDF3")
 MUTED = QColor("#8B949E")
 
+# bolinhas de estado da sessao (estilo controles de janela do macOS):
+# vermelho=trabalhando, amarelo=aguardando confirmacao, verde=livre.
+_DOT_R = 3.5           # raio
+_DOT_GAP = 11.0        # distancia entre centros
+_DOT_RIGHT = 10.0      # margem a direita ate o centro do ultimo dot
+_DOT_DIM_ALPHA = 60    # alpha dos dots inativos
+_STATE_COLOR = {"working": RED, "waiting": AMBER, "free": GREEN}
+
 _STATUS_WORD = {
     "auth": "expirado",
     "offline": "offline",
@@ -34,6 +42,7 @@ class MeterWidget(QWidget):
         self._on_quit = on_quit
         self._on_toggle_autostart = on_toggle_autostart
         self._snapshot = None
+        self._status = None  # "working" | "waiting" | "free" | None
         self._drag_offset = None
 
         self.setWindowFlags(
@@ -61,6 +70,11 @@ class MeterWidget(QWidget):
         else:
             self.setToolTip(f"Sessao: {int(snapshot.pct * 100)}%")
         self.update()  # trigger repaint
+
+    def update_status(self, state):
+        if state != self._status:
+            self._status = state
+            self.update()
 
     def _color(self, pct):
         t = self._config["thresholds"]
@@ -111,7 +125,31 @@ class MeterWidget(QWidget):
             label = self._reset_label(snap, now)
             p.setPen(MUTED)
         p.setFont(QFont("Segoe UI", 9, QFont.DemiBold))
-        p.drawText(QRectF(10, 3, WIDTH - 20, 16), Qt.AlignLeft | Qt.AlignVCenter, label)
+        # reserva a faixa da direita pras 3 bolinhas
+        dots_span = _DOT_GAP * 2 + _DOT_R * 2 + _DOT_RIGHT + 6
+        p.drawText(
+            QRectF(10, 3, WIDTH - 10 - dots_span, 16),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            label,
+        )
+        self._draw_status_dots(p)
+
+    def _draw_status_dots(self, p):
+        cy = 10.5
+        # da direita pra esquerda: verde, amarelo, vermelho (ordem macOS invertida)
+        cx_right = WIDTH - _DOT_RIGHT
+        order = ("working", "waiting", "free")  # esquerda -> direita
+        cxs = [cx_right - _DOT_GAP * (2 - i) for i in range(3)]
+        p.setPen(Qt.NoPen)
+        for state, cx in zip(order, cxs):
+            base = _STATE_COLOR[state]
+            if state == self._status:
+                col = base
+            else:
+                col = QColor(base)
+                col.setAlpha(_DOT_DIM_ALPHA)
+            p.setBrush(QBrush(col))
+            p.drawEllipse(QRectF(cx - _DOT_R, cy - _DOT_R, _DOT_R * 2, _DOT_R * 2))
 
     # --- dragging ---
     def mousePressEvent(self, e):

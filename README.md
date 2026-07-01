@@ -31,6 +31,32 @@ sair. Passa o mouse por cima pra ver o uso semanal no tooltip.
 - Cores: verde / ambar (>=60%) / vermelho (>=85%) — thresholds configuraveis.
 - Estados sem dado: `expirado` (token venceu), `offline` (sem rede), `erro`.
 - Tooltip: sessao + uso semanal (`seven_day`).
+- **3 bolinhas de estado** (direita, estilo controles de janela do macOS):
+  vermelho=Claude trabalhando, amarelo=aguardando sua confirmacao, verde=livre.
+  A do estado atual fica acesa; as outras duas apagadas.
+
+## Bolinhas de estado (hooks)
+
+O medidor e um processo separado — nao sabe o que o Claude Code esta fazendo.
+Quem alimenta o estado sao **hooks do Claude Code** que gravam
+`%APPDATA%\claude-token-meter\status.json`; o widget faz poll (`status_poll_seconds`,
+default 1s) e pinta a bolinha. O writer e `claude_token_meter/hooks.py`
+(standalone, so stdlib — roda por caminho absoluto de qualquer cwd).
+
+Hooks em `~/.claude/settings.json` (mapeamento):
+
+| Evento do Claude Code | Estado | Bolinha |
+|---|---|---|
+| `UserPromptSubmit`, `PreToolUse` | `working` | vermelho |
+| `Notification` | `waiting` | amarelo |
+| `Stop` | `free` | verde |
+
+Comando de cada hook: `py -3 "...\claude_token_meter\hooks.py" working|waiting|free`.
+
+**Limitacoes conhecidas:** `PreToolUse` dispara por ferramenta (~150ms de Python
+por chamada — e o que devolve o vermelho apos voce aprovar uma permissao); se
+uma sessao morrer no meio do trabalho a bolinha fica vermelha ate a proxima
+(nao ha heartbeat); varias sessoes simultaneas compartilham o mesmo `status.json`.
 
 Config em `%APPDATA%\claude-token-meter\config.json` (intervalo de refresh,
 thresholds de cor, timezone, posicao, caminho do credentials).
