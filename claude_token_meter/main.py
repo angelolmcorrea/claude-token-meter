@@ -2,7 +2,10 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
+
+ICON_PATH = Path(__file__).parent / "assets" / "icon.ico"
 
 from claude_token_meter import config as cfg
 from claude_token_meter import usage_client as uc
@@ -19,6 +22,8 @@ def _credentials_path(config) -> Path | None:
 def main():
     config = cfg.load()
     app = QApplication(sys.argv)
+    if ICON_PATH.exists():
+        app.setWindowIcon(QIcon(str(ICON_PATH)))
 
     def toggle_autostart():
         if autostart.is_enabled():
