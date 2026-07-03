@@ -1,10 +1,13 @@
+import logging
 from datetime import datetime, timezone
 
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QColor, QPainter, QBrush, QFont
-from PySide6.QtWidgets import QWidget, QMenu
+from PySide6.QtWidgets import QApplication, QWidget, QMenu
 
-WIDTH, HEIGHT = 300, 34
+log = logging.getLogger("claude_token_meter")
+
+WIDTH, HEIGHT = 300, 42
 GREEN = QColor("#3FB950")
 AMBER = QColor("#D29922")
 RED = QColor("#F85149")
@@ -109,14 +112,24 @@ class MeterWidget(QWidget):
         now = datetime.now(timezone.utc)
         ok = bool(snap and snap.status == "ok")
         pct = snap.pct if ok else 0.0
+        weekly = snap.weekly_pct if ok else None
 
-        bar = QRectF(8, HEIGHT - 11, WIDTH - 16, 5)
+        # barra da sessao (5px) + barra da semana (3.5px, mais fina de proposito)
+        bar = QRectF(8, HEIGHT - 19, WIDTH - 16, 5)
         p.setBrush(QBrush(TRACK))
         p.drawRoundedRect(bar, 2.5, 2.5)
         if pct > 0:
             fill = QRectF(bar.x(), bar.y(), bar.width() * pct, bar.height())
             p.setBrush(QBrush(self._color(pct)))
             p.drawRoundedRect(fill, 2.5, 2.5)
+
+        wbar = QRectF(8, HEIGHT - 10, WIDTH - 16, 3.5)
+        p.setBrush(QBrush(TRACK))
+        p.drawRoundedRect(wbar, 1.75, 1.75)
+        if weekly:
+            wfill = QRectF(wbar.x(), wbar.y(), wbar.width() * weekly, wbar.height())
+            p.setBrush(QBrush(self._color(weekly)))
+            p.drawRoundedRect(wfill, 1.75, 1.75)
 
         if ok:
             label = f"{int(pct * 100)}%   {self._reset_label(snap, now)}"
@@ -167,6 +180,18 @@ class MeterWidget(QWidget):
             self._drag_offset = None
             self._config["window"]["x"] = self.x()
             self._config["window"]["y"] = self.y()
+
+    def closeEvent(self, e):
+        # fechar vem de fora (WM_CLOSE de instalador/taskkill/broadcast) e
+        # sumia com o widget deixando o processo fantasma; so o "Sair" do
+        # menu encerra. Em logoff/shutdown o fechamento e aceito.
+        app = QApplication.instance()
+        if app is not None and app.isSavingSession():
+            e.accept()
+            return
+        log.warning("closeEvent externo ignorado — widget permanece")
+        e.ignore()
+        self.show()
 
     def _menu(self, global_pos):
         m = QMenu()
