@@ -1,8 +1,11 @@
+import logging
 from datetime import datetime, timezone
 
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QColor, QPainter, QBrush, QFont
-from PySide6.QtWidgets import QWidget, QMenu
+from PySide6.QtWidgets import QApplication, QWidget, QMenu
+
+log = logging.getLogger("claude_token_meter")
 
 WIDTH, HEIGHT = 300, 34
 GREEN = QColor("#3FB950")
@@ -167,6 +170,18 @@ class MeterWidget(QWidget):
             self._drag_offset = None
             self._config["window"]["x"] = self.x()
             self._config["window"]["y"] = self.y()
+
+    def closeEvent(self, e):
+        # fechar vem de fora (WM_CLOSE de instalador/taskkill/broadcast) e
+        # sumia com o widget deixando o processo fantasma; so o "Sair" do
+        # menu encerra. Em logoff/shutdown o fechamento e aceito.
+        app = QApplication.instance()
+        if app is not None and app.isSavingSession():
+            e.accept()
+            return
+        log.warning("closeEvent externo ignorado — widget permanece")
+        e.ignore()
+        self.show()
 
     def _menu(self, global_pos):
         m = QMenu()
