@@ -39,14 +39,17 @@ _STATUS_TIP = {
 
 
 class MeterWidget(QWidget):
-    def __init__(self, config, on_quit, on_toggle_autostart):
+    def __init__(self, config, on_quit, on_toggle_autostart,
+                 is_autostart_enabled=None):
         super().__init__()
         self._config = config
         self._on_quit = on_quit
         self._on_toggle_autostart = on_toggle_autostart
+        self._is_autostart_enabled = is_autostart_enabled
         self._snapshot = None
         self._status = None  # "working" | "waiting" | "free" | None
         self._drag_offset = None
+        self._quitting = False  # True so quando o "Sair" do menu pede quit
 
         self.setWindowFlags(
             Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
@@ -181,12 +184,19 @@ class MeterWidget(QWidget):
             self._config["window"]["x"] = self.x()
             self._config["window"]["y"] = self.y()
 
+    def _quit(self):
+        # marca a intencao antes do quit: o proprio app.quit() entrega um
+        # QCloseEvent a janela, e sem esta flag o closeEvent abaixo vetaria o
+        # encerramento (era o bug do "Sair" nao funcionar).
+        self._quitting = True
+        self._on_quit()
+
     def closeEvent(self, e):
         # fechar vem de fora (WM_CLOSE de instalador/taskkill/broadcast) e
         # sumia com o widget deixando o processo fantasma; so o "Sair" do
-        # menu encerra. Em logoff/shutdown o fechamento e aceito.
+        # menu (_quitting) ou logoff/shutdown encerram de verdade.
         app = QApplication.instance()
-        if app is not None and app.isSavingSession():
+        if self._quitting or (app is not None and app.isSavingSession()):
             e.accept()
             return
         log.warning("closeEvent externo ignorado — widget permanece")
@@ -195,7 +205,12 @@ class MeterWidget(QWidget):
 
     def _menu(self, global_pos):
         m = QMenu()
-        m.addAction("Iniciar com o Windows", self._on_toggle_autostart)
+        act = m.addAction("Iniciar com o Windows", self._on_toggle_autostart)
+        if self._is_autostart_enabled is not None:
+            # checkable pra dar feedback do estado atual (sem isto, clicar nao
+            # mostra nada mudando e parece que "nao funciona")
+            act.setCheckable(True)
+            act.setChecked(bool(self._is_autostart_enabled()))
         m.addSeparator()
-        m.addAction("Sair", self._on_quit)
+        m.addAction("Sair", self._quit)
         m.exec(global_pos)
