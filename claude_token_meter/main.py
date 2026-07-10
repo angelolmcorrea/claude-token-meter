@@ -56,7 +56,7 @@ def main():
             config["autostart"] = True
         cfg.save(config)
 
-    widget = MeterWidget(config, app.quit, toggle_autostart)
+    widget = MeterWidget(config, app.quit, toggle_autostart, autostart.is_enabled)
     widget.show()
 
     if config.get("autostart") and not autostart.is_enabled():
@@ -97,7 +97,10 @@ def main():
     def status_tick():
         widget.update_status(st.read_status())
         # watchdog da janela: terceiros mandam WM_CLOSE (instalador, taskkill
-        # sem /f) ou o monitor da janela desliga — reexibe/reposiciona
+        # sem /f) ou o monitor da janela desliga — reexibe/reposiciona.
+        # Nao reexibe durante o "Sair" (senao brigaria com o encerramento).
+        if widget._quitting:
+            return
         if not widget.isVisible():
             log.warning("janela sumiu (fechada por fora) — reexibindo")
             widget.show()
