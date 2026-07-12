@@ -47,16 +47,25 @@ Hooks em `~/.claude/settings.json` (mapeamento):
 
 | Evento do Claude Code | Estado | Bolinha |
 |---|---|---|
-| `UserPromptSubmit`, `PreToolUse` | `working` | vermelho |
+| `UserPromptSubmit`, `PostToolUse` | `working` | vermelho |
 | `Notification` | `waiting` | amarelo |
 | `Stop` | `free` | verde |
 
 Comando de cada hook: `py -3 "...\claude_token_meter\hooks.py" working|waiting|free`.
 
-**Limitacoes conhecidas:** `PreToolUse` dispara por ferramenta (~150ms de Python
+**Limitacoes conhecidas:** `PostToolUse` dispara por ferramenta (~150ms de Python
 por chamada — e o que devolve o vermelho apos voce aprovar uma permissao); se
 uma sessao morrer no meio do trabalho a bolinha fica vermelha ate a proxima
 (nao ha heartbeat); varias sessoes simultaneas compartilham o mesmo `status.json`.
+
+## Instancia unica
+
+Uma so janela por vez: no start, um named mutex do Windows (`ctypes`, em
+`main.py`) barra instancias extras — relancar (`iniciar.bat`/autostart) sai em
+vez de duplicar. Sem isto elas se acumulavam (o `closeEvent` recusa fechamento
+externo) e cada uma consultava a API de uso, estourando o rate limit (429 ->
+barra mostra "aguardando" em vez do %). O check roda ANTES do `QApplication`
+de proposito: um app ja construido segura o processo vivo mesmo apos o `return`.
 
 Config em `%APPDATA%\claude-token-meter\config.json` (intervalo de refresh,
 thresholds de cor, timezone, posicao, caminho do credentials).

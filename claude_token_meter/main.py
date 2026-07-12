@@ -1,3 +1,4 @@
+import ctypes
 import logging
 import sys
 from pathlib import Path
@@ -16,6 +17,22 @@ from claude_token_meter import status as st
 from claude_token_meter.widget import MeterWidget
 
 log = logging.getLogger("claude_token_meter")
+
+_SINGLETON_HANDLE = []  # segura o handle do mutex vivo pela vida do processo
+
+
+def _acquire_singleton(name: str = "claude-token-meter-singleton") -> bool:
+    """Instancia unica no Windows via named mutex do kernel — liberado quando o
+    processo morre (crash nao deixa lock preso). Retorna False se ja ha outra
+    instancia. Precisa rodar ANTES de subir o Qt: um QApplication ja construido
+    segura threads e o processo nao encerra no return."""
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.CreateMutexW(None, False, name)
+    ERROR_ALREADY_EXISTS = 183
+    if not handle or kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+        return False
+    _SINGLETON_HANDLE.append(handle)
+    return True
 
 
 def _setup_logging() -> None:
@@ -38,6 +55,16 @@ def _credentials_path(config) -> Path | None:
 
 def main():
     _setup_logging()
+
+    # Instancia unica ANTES do Qt: sem isto cada iniciar.bat/autostart soma um
+    # pythonw novo (o closeEvent recusa fechamento externo, entao acumulam) e
+    # cada um consulta a API de uso -> varias instancias estouram o rate limit
+    # (429). O check vem antes do QApplication de proposito: um app ja construido
+    # segura o processo vivo mesmo apos o return.
+    if not _acquire_singleton():
+        log.info("outra instancia ja roda — saindo")
+        return
+
     config = cfg.load()
     app = QApplication(sys.argv)
     # so o "Sair" do menu encerra; fechar a janela (WM_CLOSE de fora) nao
